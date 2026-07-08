@@ -2,73 +2,247 @@
 title: "Backend Architecture"
 ---
 
-# Backend Architecture
+\[Prod\] Backend Architecture
+
+dtgk-backend · Backend · Tài liệu kỹ thuật nội bộ
+
+Cập nhật lần cuối: 01/06/2026
 
 Tài liệu mô tả kiến trúc tổng thể của hệ thống backend dtgk: vai trò API Gateway trung tâm, proxy sang các microservice, technology stack, luồng xử lý request và cơ chế bảo mật.
 
 ## 1. Technology Stack
 
-- **Runtime:** Node.js 18 (sử dụng nvm)
-- **Framework:** Express.js 4.x (HTTP server)
-- **Database:** PostgreSQL 14\+
-- **ORM:** Sequelize 6.x
-- **Authentication:** JWT (jsonwebtoken)
-- **Logging:** Winston \+ Morgan
-- **Message Queue:** RabbitMQ
-- **Caching:** Redis
-- **Monitoring:** OpenTelemetry \+ Jaeger/Datadog
-- **API Documentation:** Swagger/OpenAPI
-- **Container:** Docker \+ Docker Compose
-- **Process Manager:** PM2 (production)
+File: src/index.js · src/db.js · src/knex.js · src/dbMongo.js · src/tracing.js
 
-## 2. Architecture Overview
+### 1.1 Runtime & Framework
 
-Hệ thống được thiết kế theo mô hình **API Gateway \+ Microservices**:
+Node.js \+ Express.js, lắng nghe trên port 8080
 
-```text
-Clients (Web/Mobile) 
-    ↓
-API Gateway (Port 8080)
-    ↓
-├── Service 1 (Internal Port)
-├── Service 2 (Internal Port)
-└── Service 3 (Internal Port)
-    ↓
-PostgreSQL Database
-Redis Cache
-RabbitMQ Message Queue
-```
+JavaScript ES6\+ với Babel transpilation — npm run dev dùng babel-node, npm start build ra dist/
 
-## 3. Request Flow
+Body limit: 1 MB (JSON payload)
 
-1. **Nhận Request:** API Gateway nhận HTTP request từ client
-2. **Authentication:** Xác thực JWT token từ header Authorization
-3. **Authorization:** Kiểm tra permissions của user
-4. **Routing:** Chuyển request đến service tương ứng
-5. **Processing:** Service xử lý logic business
-6. **Response:** Trả về response cho client
+x-powered-by header bị ẩn (app.disable('x-powered-by'))
 
-## 4. Security Features
+### 1.2 Database Layer
 
-- **JWT-based Authentication:** Token-based auth với expiration
-- **Role-based Access Control (RBAC):** Permission hierarchy
-- **API Key Encryption:** keyProxy system cho external integrations
-- **CORS Protection:** Configured CORS headers
-- **Rate Limiting:** Request throttling (nếu có)
-- **Input Validation:** Schema validation với Joi/Yup
-- **SQL Injection Prevention:** Parameterized queries (Sequelize)
+| Database | ORM/Driver | Purpose | Port |
+| --- | --- | --- | --- |
+| PostgreSQL | Sequelize | Primary business data | 5432 |
+| MongoDB | Mongoose | Logs, analytics | 27017 |
+| Redis | ioredis | Cache, session, queue | 6379 |
 
-## 5. Error Handling
+### 1.3 Observability
 
-Hệ thống sử dụng centralized error handling:
+File: src/tracing.js
 
-- **Custom Error Classes:** AppError, ValidationError, AuthError
-- **Error Middleware:** Catches và formats lỗi
-- **Structured Logging:** JSON logs cho analysis
-- **Error Codes:** Standardized HTTP status codes \+ custom codes
+OpenTelemetry SDK — bật bằng ENABLE\_TRACING=true (mặc định tắt)
 
-## 6. Deployment Architecture
+OTLP trace exporter → env OTEL\_EXPORTER\_OTLP\_ENDPOINT/v1/traces
 
-- **Development:** Local Node.js \+ PostgreSQL \+ Redis
-- **Staging:** Docker containers \+ Docker Compose
-- **Production:** PM2 cluster mode \+ Nginx reverse proxy \+ managed services
+OTLP metric exporter → OTEL\_EXPORTER\_OTLP\_ENDPOINT/v1/metrics (PeriodicExportingMetricReader)
+
+Service name: dtgk\_backend (override bằng OTEL\_SERVICE\_NAME)
+
+Auto-instrumentation: Express, HTTP, Sequelize (getNodeAutoInstrumentations)
+
+Console trace logging luôn bật — tắt bằng DISABLE\_TRACE\_CONSOLE=true
+
+Verbose mode cho tất cả spans: VERBOSE\_TRACE=true
+
+⚠️ Tắt favicon.ico traces để giảm noise — đã filter trong SafeConsoleExporter.
+
+## 2. Kiến trúc Proxy (API Gateway)
+
+File: src/index.js
+
+### 2.1 Tổng quan
+
+dtgk-backend đóng vai trò API Gateway trung tâm. Tất cả request từ frontend (dienthoaigiakho.vn, dashboard.dienthoaigiakho.vn) đi vào đây. Backend xử lý auth, permission, rate-limiting, rồi handle trực tiếp (/api/\*) hoặc forward sang các microservice riêng biệt qua http-proxy-middleware.
+
+### 2.2 Sơ đồ kiến trúc tổng thể
+
+Hình 1. Kiến trúc API Gateway — Client → dtgk-backend (middleware \+ route groups) → microservices
+
+### 2.3 Bảng Proxy Routes chi tiết
+
+| Route Path | Target Service | Port | Method | Auth Required | Purpose |
+| --- | --- | --- | --- | --- | --- |
+| /api/admin/\* | dtgk-admin-api | 3001 | ALL | JWT \+ Permission | Admin dashboard APIs |
+| /api/oms/\* | oms-service | 3002 | ALL | JWT | Order management |
+| /api/warehouse/\* | warehouse-service | 3003 | ALL | JWT | Inventory & warehouse |
+| /api/payment/\* | payment-service | 3004 | ALL | keyProxy | Payment processing |
+| /api/partner/\* | partner-api | 3005 | ALL | JWT \+ keyProxy | Partner integrations |
+
+## 3. Luồng Request (Middleware Pipeline)
+
+File: src/index.js · src/middleware/auth.js · src/middleware/permission.js · src/rate-limiting.js
+
+### 3.1 Sơ đồ luồng toàn bộ (Admin Route)
+
+Hình 2. Request Middleware Pipeline (Admin Route) — 9 bước xử lý
+
+1. app.use(cors()) - CORS headers
+2. app.use(express.json()) - Parse body
+3. app.use(morgan()) - Request logging
+4. app.use(rateLimiter) - Rate limiting check
+5. app.use(auth) - JWT validation (nếu cần)
+6. app.use(permission) - Permission checking
+7. app.use(restrictToAllowedDomains) - Domain whitelist
+8. app.use(proxyMiddleware) - Forward to service
+9. Error handling - Catch & format error
+
+### 3.2 Header inject khi forward sang microservice
+
+| Header | Source | Value | Purpose |
+| --- | --- | --- | --- |
+| X-User-Id | req.user.id | UUID | User identity |
+| X-User-Role | req.user.role | string | User role |
+| X-Forwarded-For | client IP | IP | Original client IP |
+| X-Forwarded-Proto | request protocol | http/https | Protocol |
+| X-Request-Id | generated | UUID | Tracing ID |
+| Content-Length | recalculated | number | Body size |
+
+⚠️ OMS proxy: nếu middleware đã parse/modify body, req.rawBody được dùng để rewrite lại Content-Length — tránh body bị truncate khi forward.
+
+### 3.3 Rate Limiting — logic chi tiết
+
+| Endpoint | Limit | Window | Bypass Condition |
+| --- | --- | --- | --- |
+| /api/auth/login | 5 | 15 min | None |
+| /api/admin/\* | 100 | 15 min | IP in IP\_GK |
+| /api/payment/\* | 50 | 1 min | apiKey valid |
+| /api/\* (default) | 1000 | 1 hour | None |
+
+Rate limit check: (current\_count) \> limit → return 429 Too Many Requests
+
+Store in Redis: ratelimit:{userId}:{endpoint} with TTL = window duration
+
+## 4. Hệ thống Authentication & Security
+
+File: src/middleware/auth.js · src/middleware/permission.js · src/lib/jwt.js · src/lib/cipher.js
+
+### 4.1 Tổng quan các middleware bảo mật
+
+| Middleware | Target Routes | Logic |
+| --- | --- | --- |
+| adminRequired | /api/admin/\* | JWT decode & validate, check expiry |
+| staffRequired | /api/staff/\* | JWT valid & role = staff/admin |
+| permission | Admin/staff routes | Check req.requiredPermission in DB |
+| keyProxy | /api/payment/_, /api/partner/_ | Decrypt X-API-Key, check timestamp |
+| restrictToAllowedDomains | All routes | Check Origin/Referer in whitelist |
+| checkInternalGK | DELETE routes | Check IP in env IP\_GK (JSON array) |
+
+### 4.2 JWT Authentication Flow (adminRequired)
+
+Hình 3. JWT Authentication Flow (adminRequired)
+
+1. Extract token từ Authorization header: Bearer \[token\]
+2. Verify signature bằng JWT\_SECRET
+3. Decode payload → req.user = decoded
+4. Check token expiry (ngày, không giờ)
+5. Query DB: Staff.findByUsername(req.user.username)
+6. Return 401 nếu user không tồn tại hoặc bị deactive
+7. Attach req.user với full staff data
+
+⚠️ Token expiry check bằng ngày (setHours(0,0,0,0)), không phải exact timestamp. Token tạo lúc 23:59 hôm qua sẽ invalid từ 00:00 hôm nay.
+
+### 4.3 keyProxy — Timestamp-based API Key
+
+Client tạo key: Encrypter(Date.now().toString()) — mã hóa timestamp hiện tại
+
+Backend: Decrypter(X-API-Key) → parseInt → check Date.now() - parsedKey ≤ 60,000ms
+
+Mục đích: ngăn replay attack — key chỉ valid trong 60 giây kể từ lúc tạo
+
+⚠️ Client phải generate key mới cho mỗi request. Không cache key giữa các lần gọi API.
+
+### 4.4 Permission System — cấu trúc
+
+Mỗi admin route được đặt trước một permission middleware để declare loại quyền cần có:
+
+app.put('/api/v2/coupons', permission.updateCoupons, adminRequired) ↑ Sets req.requiredPermission = 'updateCoupons' adminRequired sẽ query DB: Permission WHERE actionName = 'updateCoupons'
+
+Cấu trúc phân quyền trong database:
+
+Staff  ──(staffgroup)──►  Group  ──(grouppermission)──►  Permission { id, username, email }   { name }                       { actionName }
+
+Danh sách permission nhóm theo module:
+
+| Module | Permission | Description |
+| --- | --- | --- |
+| Coupon | createCoupons | Tạo coupon |
+|  | updateCoupons | Cập nhật coupon |
+|  | deleteCoupons | Xóa coupon |
+| Product | createProduct | Tạo sản phẩm |
+|  | updateProduct | Cập nhật sản phẩm |
+|  | deleteProduct | Xóa sản phẩm |
+| User | manageUser | Quản lý user |
+|  | manageRole | Quản lý role |
+| Report | viewReport | Xem report |
+|  | exportReport | Xuất report |
+
+### 4.5 Allowed Domains (restrictToAllowedDomains)
+
+- [https://dienthoaigiakho.vn](https://dienthoaigiakho.vn)
+- [https://stg.dienthoaigiakho.vn](https://stg.dienthoaigiakho.vn)
+- [https://beta.dienthoaigiakho.vn](https://beta.dienthoaigiakho.vn)
+- [https://dashboard.dienthoaigiakho.vn](https://dashboard.dienthoaigiakho.vn)
+- [https://stgadmin.giakho.vn](https://stgadmin.giakho.vn)
+- [https://beta-dashboard.dienthoaigiakho.vn](https://beta-dashboard.dienthoaigiakho.vn)
+- [https://stg-newpanel.dienthoaigiakho.vn](https://stg-newpanel.dienthoaigiakho.vn)
+- [https://newpanel.dienthoaigiakho.vn](https://newpanel.dienthoaigiakho.vn)
+- [http://localhost](http://localhost)
+- [http://127.0.0.1](http://127.0.0.1)
+
+⚠️ Request không có Origin/Referer header (server-to-server, Postman, curl) sẽ được PASS QUA — middleware chỉ block khi origin khớp nhưng không nằm trong whitelist.
+
+## 5. External Integrations
+
+File: src/services/
+
+### 5.1 Bảng tổng hợp
+
+| Service | Purpose | Auth Type | Endpoint | Status |
+| --- | --- | --- | --- | --- |
+| Google Sheet | Inventory sync | Service Account | sheets.googleapis.com | Active |
+| Twilio | SMS OTP | API Key \+ Secret | api.twilio.com | Active |
+| Firebase | Push notification | Server key | fcm.googleapis.com | Active |
+| Stripe | Payment gateway | API key | api.stripe.com | Active |
+| SendGrid | Email service | API key | api.sendgrid.com | Active |
+
+⚠️ credentials.json (Google Service Account) được mount vào container lúc deploy — không được commit vào git. Xem deploy/prod/k8s/ cho cấu hình secret.
+
+## 6. Background Jobs & Cron
+
+File: src/services/Cron.js · src/index.js
+
+### 6.1 Cron Jobs trong index.js (global)
+
+| Cron Expression | Job | Purpose | Retry |
+| --- | --- | --- | --- |
+| 0 \*/6 \* \* \* | syncInventory() | Sync inventory từ Google Sheet | 3 times |
+| 0 0 \* \* \* | generateDailyReport() | Generate daily report | Offline queue |
+| 0 \*/30 \* \* \* | checkPaymentStatus() | Check pending payment | Redis queue |
+| 0 2 \* \* 0 | cleanupOldLogs() | Clean logs \> 30 days | None |
+
+### 6.2 Cron Jobs trong Cron.js
+
+| Job Name | Frequency | DB Query | Side Effects |
+| --- | --- | --- | --- |
+| setTradeInRetrySchedule | Every 1 min | Find failed trade-in in queue | Push to Redis queue |
+| syncPartnerData | Every 4 hours | Sync from partner API | Update partner DB |
+| validateInventory | Every 2 hours | Check stock accuracy | Alert if mismatch |
+
+⚠️ Trade-in retry queue phụ thuộc Redis. Nếu Redis down, setTradeInRetrySchedule vẫn chạy mỗi phút nhưng sẽ không tìm thấy job nào trong queue.
+
+## 7. Ghi chú quan trọng
+
+- Tất cả DELETE requests đều bị log vào Lark và kiểm tra IP whitelist (checkInternalGK) — bất kể endpoint nào.
+- JWT token expiry check theo ngày (setHours(0,0,0,0)) — token tạo 23:59 hôm qua invalid từ 00:00 hôm nay. Không phải expiry theo giờ.
+- keyProxy API key chỉ valid 60 giây — client phải generate lại mỗi request.
+- Rate limiting bypass: request từ IP nằm trong env IP\_GK (JSON array string) sẽ skip tất cả spam checks và limiter.
+- Sequelize paranoid mode: tất cả model dùng soft delete — raw Knex SQL query phải tự thêm WHERE deletedAt IS NULL.
+- CORS được set origin: '\*' toàn cục — restrictToAllowedDomains là middleware riêng biệt chỉ áp dụng cho các route được chỉ định.
+- OMS proxy raw body: khi middleware đã parse/modify body, phải dùng req.rawBody để rewrite Content-Length header — nếu không body có thể bị truncate.
+- Trade-in proxy (cacheSpam): kết quả check spam được cache Redis — cùng IP trong window sẽ nhận response từ cache, không re-execute handler.

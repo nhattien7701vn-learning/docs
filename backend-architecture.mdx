@@ -1,0 +1,74 @@
+---
+title: "Backend Architecture"
+---
+
+# Backend Architecture
+
+Tài liệu mô tả kiến trúc tổng thể của hệ thống backend dtgk: vai trò API Gateway trung tâm, proxy sang các microservice, technology stack, luồng xử lý request và cơ chế bảo mật.
+
+## 1. Technology Stack
+
+- **Runtime:** Node.js 18 (sử dụng nvm)
+- **Framework:** Express.js 4.x (HTTP server)
+- **Database:** PostgreSQL 14\+
+- **ORM:** Sequelize 6.x
+- **Authentication:** JWT (jsonwebtoken)
+- **Logging:** Winston \+ Morgan
+- **Message Queue:** RabbitMQ
+- **Caching:** Redis
+- **Monitoring:** OpenTelemetry \+ Jaeger/Datadog
+- **API Documentation:** Swagger/OpenAPI
+- **Container:** Docker \+ Docker Compose
+- **Process Manager:** PM2 (production)
+
+## 2. Architecture Overview
+
+Hệ thống được thiết kế theo mô hình **API Gateway \+ Microservices**:
+
+```text
+Clients (Web/Mobile) 
+    ↓
+API Gateway (Port 8080)
+    ↓
+├── Service 1 (Internal Port)
+├── Service 2 (Internal Port)
+└── Service 3 (Internal Port)
+    ↓
+PostgreSQL Database
+Redis Cache
+RabbitMQ Message Queue
+```
+
+## 3. Request Flow
+
+1. **Nhận Request:** API Gateway nhận HTTP request từ client
+2. **Authentication:** Xác thực JWT token từ header Authorization
+3. **Authorization:** Kiểm tra permissions của user
+4. **Routing:** Chuyển request đến service tương ứng
+5. **Processing:** Service xử lý logic business
+6. **Response:** Trả về response cho client
+
+## 4. Security Features
+
+- **JWT-based Authentication:** Token-based auth với expiration
+- **Role-based Access Control (RBAC):** Permission hierarchy
+- **API Key Encryption:** keyProxy system cho external integrations
+- **CORS Protection:** Configured CORS headers
+- **Rate Limiting:** Request throttling (nếu có)
+- **Input Validation:** Schema validation với Joi/Yup
+- **SQL Injection Prevention:** Parameterized queries (Sequelize)
+
+## 5. Error Handling
+
+Hệ thống sử dụng centralized error handling:
+
+- **Custom Error Classes:** AppError, ValidationError, AuthError
+- **Error Middleware:** Catches và formats lỗi
+- **Structured Logging:** JSON logs cho analysis
+- **Error Codes:** Standardized HTTP status codes \+ custom codes
+
+## 6. Deployment Architecture
+
+- **Development:** Local Node.js \+ PostgreSQL \+ Redis
+- **Staging:** Docker containers \+ Docker Compose
+- **Production:** PM2 cluster mode \+ Nginx reverse proxy \+ managed services

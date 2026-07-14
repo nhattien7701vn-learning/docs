@@ -1,0 +1,182 @@
+---
+title: "Environment Variables"
+---
+
+# Environment Variables Reference
+
+Tài liệu liệt kê đầy đủ các biến môi trường được dùng trong dtgk-backend.
+
+## Setup Instructions
+
+1. Copy `.env-sample` to `.env`:
+   ```bash
+   cp .env-sample .env
+   ```
+2. Fill in required variables
+3. For development, use default values provided in `.env-sample`
+
+## Core Configuration
+
+### Application Settings
+
+| Variable | Type | Default | Description |
+| --- | --- | --- | --- |
+| `NODE_ENV` | string | `development` | Environment (development, staging, production) |
+| `APP_NAME` | string | `dtgk-backend` | Application name |
+| `APP_PORT` | number | `8080` | Server port |
+| `API_BASE_URL` | string | `http://localhost:8080/api` | API base URL |
+
+### Database Configuration
+
+| Variable | Type | Default | Description |
+| --- | --- | --- | --- |
+| `DB_HOST` | string | `localhost` | PostgreSQL host |
+| `DB_PORT` | number | `5432` | PostgreSQL port |
+| `DB_NAME` | string | `dtgk_dev` | Database name |
+| `DB_USER` | string | `postgres` | Database user |
+| `DB_PASSWORD` | string | `1234` | Database password |
+| `DB_DIALECT` | string | `postgres` | Database dialect |
+
+### Redis Configuration
+
+| Variable | Type | Default | Description |
+| --- | --- | --- | --- |
+| `REDIS_HOST` | string | `localhost` | Redis host |
+| `REDIS_PORT` | number | `6379` | Redis port |
+| `REDIS_PASSWORD` | string | \`\` | Redis password (optional) |
+| `REDIS_DB` | number | `0` | Redis database number |
+
+### Authentication & Security
+
+| Variable | Type | Required | Description |
+| --- | --- | --- | --- |
+| `JWT_SECRET` | string | Yes | Secret key for signing JWT tokens |
+| `JWT_EXPIRATION` | string | No | Token expiration time (default: 8h) |
+| `REFRESH_TOKEN_SECRET` | string | Yes | Secret for refresh tokens |
+| `REFRESH_TOKEN_EXPIRATION` | string | No | Refresh token expiration (default: 30d) |
+| `SECURITY_ENCRYPT` | boolean | Yes | Enable encryption for keyProxy |
+| `VECTOR` | string | Yes | Encryption vector |
+| `ALGORITHM` | string | Yes | Encryption algorithm (aes-256-cbc) |
+
+**⚠️ WARNING:** Missing SECURITY\_ENCRYPT, VECTOR, or ALGORITHM will cause all requests through keyProxy to fail with 400 Invalid API Key.
+
+### IP Configuration
+
+| Variable | Type | Format | Description |
+| --- | --- | --- | --- |
+| `IP_GK` | string | JSON array | Whitelisted IPs for Gateway (e.g., `["127.0.0.1","::1"]`) |
+| `ALLOWED_ORIGINS` | string | Comma-separated | CORS allowed origins |
+
+**⚠️ WARNING:** IP\_GK must be valid JSON array format. Invalid format will crash the app on startup.
+
+### External Services
+
+#### Email Service (SMTP)
+
+| Variable | Type | Description |
+| --- | --- | --- |
+| `SMTP_HOST` | string | Email server host |
+| `SMTP_PORT` | number | Email server port |
+| `SMTP_USER` | string | Email account username |
+| `SMTP_PASSWORD` | string | Email account password |
+| `SMTP_FROM` | string | Default sender email |
+
+#### SMS Service
+
+| Variable | Type | Description |
+| --- | --- | --- |
+| `SMS_PROVIDER` | string | SMS service (twilio, aws-sns) |
+| `SMS_API_KEY` | string | SMS service API key |
+| `SMS_API_SECRET` | string | SMS service secret |
+
+#### Payment Gateway
+
+| Variable | Type | Description |
+| --- | --- | --- |
+| `PAYMENT_PROVIDER` | string | Payment service (stripe, paypal) |
+| `PAYMENT_API_KEY` | string | Payment API key |
+| `PAYMENT_WEBHOOK_SECRET` | string | Webhook secret for verification |
+
+#### Cloud Storage
+
+| Variable | Type | Description |
+| --- | --- | --- |
+| `AWS_REGION` | string | AWS region |
+| `AWS_ACCESS_KEY_ID` | string | AWS access key |
+| `AWS_SECRET_ACCESS_KEY` | string | AWS secret key |
+| `S3_BUCKET` | string | S3 bucket name |
+
+### Monitoring & Logging
+
+| Variable | Type | Default | Description |
+| --- | --- | --- | --- |
+| `LOG_LEVEL` | string | `info` | Logging level (debug, info, warn, error) |
+| `LOG_FORMAT` | string | `json` | Log format (json, text) |
+| `OTEL_ENABLED` | boolean | `false` | Enable OpenTelemetry |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | string | \`\` | OTLP collector endpoint |
+
+### Message Queue (RabbitMQ)
+
+| Variable | Type | Default | Description |
+| --- | --- | --- | --- |
+| `RABBITMQ_HOST` | string | `localhost` | RabbitMQ host |
+| `RABBITMQ_PORT` | number | `5672` | RabbitMQ port |
+| `RABBITMQ_USER` | string | `guest` | RabbitMQ username |
+| `RABBITMQ_PASSWORD` | string | `guest` | RabbitMQ password |
+
+## Example .env File
+
+```bash
+# Application
+NODE_ENV=development
+APP_NAME=dtgk-backend
+APP_PORT=8080
+
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=dtgk_dev
+DB_USER=postgres
+DB_PASSWORD=1234
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# JWT
+JWT_SECRET=your-super-secret-key-change-in-production
+REFRESH_TOKEN_SECRET=your-refresh-secret-key
+
+# Security
+SECURITY_ENCRYPT=true
+VECTOR=your-encryption-vector
+ALGORITHM=aes-256-cbc
+
+# IP Configuration
+IP_GK=["127.0.0.1","::1"]
+
+# Logging
+LOG_LEVEL=info
+```
+
+## Environment-Specific Values
+
+### Development
+
+- `NODE_ENV=development`
+- `LOG_LEVEL=debug`
+- `OTEL_ENABLED=false`
+
+### Staging
+
+- `NODE_ENV=staging`
+- `LOG_LEVEL=info`
+- `OTEL_ENABLED=true`
+
+### Production
+
+- `NODE_ENV=production`
+- `LOG_LEVEL=warn`
+- `OTEL_ENABLED=true`
+- All secrets from secure vault
+- No default values for sensitive data

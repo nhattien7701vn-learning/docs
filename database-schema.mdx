@@ -1,0 +1,114 @@
+---
+title: "Database Schema & ERD"
+---
+
+# Database Schema & ERD
+
+Tài liệu mô tả toàn bộ schema PostgreSQL của dtgk-backend: 45 Sequelize models, 71 migrations, ER diagrams theo từng domain, bḿng mô tả fields, relationships và lưu ý kỹ thuật quan trọng.
+
+## Database Configuration
+
+**Database:** PostgreSQL 14\+ **Connection:** src/config/config.json **Migrations:** src/migrations/ (71 migration files) **Models:** src/models/ (45 model files) **ORM:** Sequelize 6.x
+
+## Core Domains & Tables
+
+### 1. Users & Authentication
+
+- `users` - User accounts
+- `user_profiles` - User profile information
+- `user_roles` - User role assignments
+- `permissions` - System permissions
+- `password_reset_tokens` - Password reset flow
+
+### 2. Authorization & Access Control
+
+- `roles` - Role definitions
+- `role_permissions` - Role-permission mapping
+- `access_logs` - Access audit logs
+- `api_keys` - API key management
+
+### 3. Core Business Entities
+
+- `organizations` - Organization data
+- `projects` - Project management
+- `teams` - Team structures
+- `members` - Team membership
+- `departments` - Department organization
+
+### 4. Content & Documents
+
+- `documents` - Document storage
+- `attachments` - File attachments
+- `versions` - Document versions
+- `comments` - Comment threads
+
+### 5. Workflow & Process
+
+- `workflows` - Workflow definitions
+- `workflow_steps` - Workflow stages
+- `tasks` - Task management
+- `task_assignments` - Task assignments
+- `task_history` - Task audit trail
+
+### 6. Integrations & External
+
+- `external_integrations` - Third-party service configs
+- `integration_logs` - Integration audit logs
+- `webhooks` - Webhook configurations
+- `webhook_events` - Webhook event history
+
+### 7. Analytics & Monitoring
+
+- `audit_logs` - System audit logs
+- `error_logs` - Error tracking
+- `performance_metrics` - Performance data
+- `user_activity` - User activity tracking
+
+## Key Relationships
+
+### One-to-Many Relationships
+
+- User → User Profiles
+- Organization → Projects
+- Project → Tasks
+- Document → Versions
+
+### Many-to-Many Relationships
+
+- Users ↔ Roles (via user\_roles)
+- Roles ↔ Permissions (via role\_permissions)
+- Users ↔ Teams (via team\_members)
+
+## Migration Strategy
+
+**Sequelize CLI Commands:**
+
+```bash
+# Run all pending migrations
+npm run sequelize:migrate
+
+# Undo last migration
+npm run sequelize:migrate:undo
+
+# Undo all migrations
+npm run sequelize:migrate:undo:all
+
+# Create new migration
+npm run sequelize:migration:generate -- --name add-new-column
+```
+
+## Indexes & Performance
+
+Chính sách indexing:
+
+- **Primary Keys:** UUID và auto-increment ID
+- **Foreign Keys:** Indexed for join performance
+- **Composite Indexes:** On frequently queried column combinations
+- **Unique Constraints:** On username, email v.v.
+
+## Data Integrity
+
+- **Foreign Key Constraints:** ON DELETE CASCADE/RESTRICT
+- **Unique Constraints:** Enforce data uniqueness
+- **Check Constraints:** Data validation rules
+- **Defaults:** Auto-timestamps (createdAt, updatedAt)

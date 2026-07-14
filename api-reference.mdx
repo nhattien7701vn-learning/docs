@@ -1,0 +1,211 @@
+---
+title: "API Reference"
+---
+
+# API Reference
+
+Tài liệu mô tả toàn bộ endpoints của hệ thống backend dtgk.
+
+**Base URL:** `http://localhost:8080/api` (dev) | `https://api.dtgk.example.com/api` (production) **Port:** 8080 (development) **Authentication:** Bearer Token (JWT)
+
+## Authentication Endpoints
+
+### POST /auth/login
+
+Xác thực người dùng và lấy JWT token
+
+**Request:**
+
+```json
+{
+  "email": "user@example.com",
+  "password": "password123"
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "uuid",
+    "email": "user@example.com",
+    "name": "User Name",
+    "roles": ["user", "admin"]
+  }
+}
+```
+
+### POST /auth/refresh
+
+Refresh access token
+
+**Request:**
+
+```json
+{
+  "refreshToken": "token"
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "token": "new-token"
+}
+```
+
+## User Endpoints
+
+### GET /users
+
+Lấy danh sách người dùng (yêu cầu admin)
+
+**Query Parameters:**
+
+- `page` (number) - Page number
+- `limit` (number) - Items per page
+- `search` (string) - Search by email/name
+
+**Response (200):**
+
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "email": "user@example.com",
+      "name": "User Name",
+      "role": "user",
+      "createdAt": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "total": 100,
+  "page": 1,
+  "limit": 10
+}
+```
+
+### GET /users/:id
+
+Lấy thông tin chi tiết người dùng
+
+### POST /users
+
+Tạo người dùng mới (admin only)
+
+**Request:**
+
+```json
+{
+  "email": "newuser@example.com",
+  "name": "New User",
+  "password": "password123",
+  "role": "user"
+}
+```
+
+### PUT /users/:id
+
+Cập nhật thông tin người dùng
+
+### DELETE /users/:id
+
+Xóa người dùng (admin only)
+
+## Projects Endpoints
+
+### GET /projects
+
+Lấy danh sách projects
+
+**Response (200):**
+
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "name": "Project Name",
+      "description": "Project description",
+      "status": "active",
+      "owner": {
+        "id": "uuid",
+        "name": "Owner Name"
+      },
+      "createdAt": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "total": 50
+}
+```
+
+### POST /projects
+
+Tạo project mới
+
+**Request:**
+
+```json
+{
+  "name": "New Project",
+  "description": "Project description",
+  "owner_id": "uuid"
+}
+```
+
+### GET /projects/:id
+
+Lấy chi tiết project
+
+### PUT /projects/:id
+
+Cập nhật project
+
+### DELETE /projects/:id
+
+Xóa project
+
+## Error Handling
+
+### Error Response Format
+
+```json
+{
+  "status": "error",
+  "code": "INVALID_REQUEST",
+  "message": "Request validation failed",
+  "errors": [
+    {
+      "field": "email",
+      "message": "Invalid email format"
+    }
+  ]
+}
+```
+
+### Common Error Codes
+
+- `UNAUTHORIZED` (401) - Missing/invalid token
+- `FORBIDDEN` (403) - Insufficient permissions
+- `NOT_FOUND` (404) - Resource not found
+- `VALIDATION_ERROR` (400) - Invalid request data
+- `CONFLICT` (409) - Resource already exists
+- `INTERNAL_ERROR` (500) - Server error
+
+## Rate Limiting
+
+- Default: 100 requests per 15 minutes per user
+- Headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+
+## Response Pagination
+
+All list endpoints support pagination:
+
+- `page` - Page number (starts at 1)
+- `limit` - Items per page (default: 10, max: 100)
+- `total` - Total number of items
+- `hasMore` - Whether more pages exist

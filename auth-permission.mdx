@@ -1,0 +1,218 @@
+---
+title: "Auth & Permission System"
+---
+
+# Auth & Permission System
+
+Tài liệu mô tả đầy đủ hệ thống xác thực và phân quyền: JWT flow, permission hierarchy, role-based access control (RBAC).
+
+## Authentication Flow
+
+### 1. JWT Token Structure
+
+**Header:**
+
+```json
+{
+  "alg": "HS256",
+  "typ": "JWT"
+}
+```
+
+**Payload:**
+
+```json
+{
+  "sub": "user_id_uuid",
+  "email": "user@example.com",
+  "name": "User Name",
+  "roles": ["user", "admin"],
+  "permissions": ["read:project", "write:project"],
+  "iat": 1672531200,
+  "exp": 1672617600
+}
+```
+
+**Signature:**
+
+```text
+HS256(base64UrlEncode(header) + "." + base64UrlEncode(payload), SECRET_KEY)
+```
+
+### 2. Token Lifespan
+
+- **Access Token:** 8 hours
+- **Refresh Token:** 30 days
+- **Token Refresh:** POST /auth/refresh
+
+### 3. Token Storage
+
+**Client Side:**
+
+- Access Token: Memory/Session Storage (no localStorage)
+- Refresh Token: HttpOnly Secure Cookie
+
+**Server Side:**
+
+- Blacklist for revoked tokens (Redis)
+- Token validation cache (Redis)
+
+## Permission Hierarchy
+
+### Role Definition
+
+```text
+SystemAdmin
+├── ProjectAdmin
+├── TeamLead
+└── Developer
+    └── Viewer
+```
+
+### Permission Groups
+
+#### Project Permissions
+
+- `create:project` - Tạo project mới
+- `read:project` - Xem project
+- `update:project` - Cập nhật project
+- `delete:project` - Xóa project
+
+#### User Management Permissions
+
+- `create:user` - Tạo user mới
+- `read:user` - Xem user
+- `update:user` - Cập nhật user
+- `delete:user` - Xóa user
+
+#### Team Permissions
+
+- `create:team` - Tạo team
+- `read:team` - Xem team
+- `update:team` - Cập nhật team
+- `delete:team` - Xóa team
+
+#### Admin Permissions
+
+- `admin:read` - Xem admin panel
+- `admin:write` - Quản lý hệ thống
+- `admin:delete` - Xóa dữ liệu
+
+## RBAC Implementation
+
+### 1. Database Tables
+
+```sql
+-- Roles
+CREATE TABLE roles (
+  id UUID PRIMARY KEY,
+  name VARCHAR(50) UNIQUE NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Permissions
+CREATE TABLE permissions (
+  id UUID PRIMARY KEY,
+  name VARCHAR(100) UNIQUE NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Role-Permission Mapping
+CREATE TABLE role_permissions (
+  role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
+  permission_id UUID REFERENCES permissions(id) ON DELETE CASCADE,
+  PRIMARY KEY (role_id, permission_id)
+);
+
+-- User-Role Mapping
+CREATE TABLE user_roles (
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, role_id)
+);
+```
+
+### 2. Middleware Implementation
+
+```javascript
+// Middleware to check authentication
+const authMiddleware = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'No token' });
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+// Middleware to check permissions
+const requirePermission = (permission) => {
+  return (req, res, next) => {
+    if (!req.user.permissions.includes(permission)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+    next();
+  };
+};
+```
+
+### 3. Usage Example
+
+```javascript
+// Apply middleware to routes
+router.post('/projects',
+  authMiddleware,
+  requirePermission('create:project'),
+  createProjectHandler
+);
+```
+
+## API Key System (keyProxy)
+
+### Key Generation
+
+```bash
+# Environment variables for encryption
+SECURITY_ENCRYPT=true
+VECTOR="your-vector-string"
+ALGORITHM="aes-256-cbc"
+```
+
+### Key Usage
+
+```http
+GET /api/data
+Authorization: Bearer sk_live_xxxxxxxxxxxxx
+```
+
+## Session Management
+
+### Session Storage
+
+- Redis for distributed sessions
+- Session expiration: 24 hours
+- Refresh on activity
+
+### Logout Flow
+
+1. Client sends logout request
+2. Server adds token to blacklist (Redis)
+3. Client clears local auth state
+4. Refresh token invalidated
+
+## Security Best Practices
+
+- Always use HTTPS in production
+- Rotate secrets regularly
+- Implement rate limiting on auth endpoints
+- Monitor failed login attempts
+- Use secure HttpOnly cookies for refresh tokens
+- Validate token signature on every request
+- Implement token expiration
+- Log all authentication events

@@ -31,7 +31,31 @@
           "icon": "newspaper"
         }
       ]
-    }
+    },
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "index",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Backend Documentation",
+        "icon": {
+          "name": "book",
+          "library": "lucide"
+        },
+        "pages": [
+          "dev-setup",
+          "backend-architecture",
+          "database-schema",
+          "api-reference",
+          "auth-permission",
+          "environment-variables"
+        ]
+      }
+    ]
   },
   "logo": {
     "light": "/logo/light.svg",

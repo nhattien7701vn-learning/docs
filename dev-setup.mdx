@@ -1,0 +1,112 @@
+---
+title: "Dev Setup"
+---
+
+# Dev Setup
+
+Tài liệu hướng dẫn từng bước để cài đặt môi trường phát triển local cho dtgk-backend: từ prerequisites, cài đặt dependencies, cấu hình .env, setup database, đến chạy server.
+
+## 1. Prerequisites
+
+File: Dockerfile · package.json · src/config/config.json
+
+Cài đặt các công cụ sau trước khi bắt đầu:
+
+### Cài Node.js 18 với nvm:
+
+#### Cài nvm (nếu chưa có)
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+```
+
+#### Cài và dùng Node 18
+
+```bash
+nvm install 18
+nvm use 18
+node --version   # v18.x.x
+```
+
+## 2. Clone & Install dependencies
+
+File: package.json
+
+### Clone repository
+
+```bash
+git clone <repo-url>
+cd dtgk_backend
+```
+
+### Cài đặt dependencies (~300\+ packages)
+
+```bash
+npm install
+```
+
+⚠️ **Lưu ý:** npm install sẽ cài cả devDependencies (Babel, nodemon, sequelize-cli). Không cần npm install --production khi dev.
+
+→ Nếu gặp lỗi node-gyp (liên quan build native module), cài Xcode Command Line Tools: `xcode-select --install`
+
+## 3. Cấu hình Environment Variables (.env)
+
+File: .env-sample · .env
+
+Tạo file .env từ .env-sample rồi điền giá trị:
+
+```bash
+cp .env-sample .env
+```
+
+Các biến bắt buộc cần điền để server khởi động được.
+
+⚠️ **SERCURITY\_ENCRYPT \+ VECTOR \+ ALGORITHM bắt buộc** để keyProxy hoạt động. Thiếu 3 biến này → tất cả request qua keyProxy sẽ fail với 400 Invalid API Key.
+
+⚠️ **IP\_GK phải là JSON array string** hợp lệ: `['127.0.0.1','::1']` — sai format sẽ crash app khi start.
+
+## 4. Setup Database PostgreSQL
+
+File: src/config/config.json · src/migrations/ (71 files) · .sequelizerc
+
+### 4.1 Tạo database và user
+
+Sequelize CLI đọc config từ src/config/config.json theo NODE\_ENV. Dev config mặc định:
+
+```json
+{
+  "development": {
+    "username": "postgres",
+    "password": "1234",
+    "database": "dtgk_dev",
+    "host": "localhost",
+    "port": 5432,
+    "dialect": "postgres"
+  }
+}
+```
+
+### Tạo database thủ công (nếu không dùng Docker):
+
+#### Kết nối PostgreSQL với superuser
+
+```bash
+psql -U postgres
+```
+
+#### Trong psql console:
+
+```sql
+CREATE DATABASE dtgk_dev;
+ALTER DATABASE dtgk_dev SET datestyle TO 'ISO, DMY';
+```
+
+#### Nếu dùng user khác (ví dụ dtgk\_admin):
+
+```sql
+CREATE USER dtgk_admin WITH PASSWORD 'dtgk_admin';
+GRANT ALL PRIVILEGES ON DATABASE dtgk_dev TO dtgk_admin;
+\q
+```
+
+→ init-user-db.sh (dùng trong Docker) làm tự động bước này khi container PostgreSQL khởi động lần đầu.
